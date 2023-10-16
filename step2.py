@@ -8,6 +8,7 @@ from progress.bar import FillingCirclesBar
 from pprint import pprint
 from pathlib import Path
 import threading
+from pymongo import MongoClient
 from fp.fp import FreeProxy
 
 with open("./link.json", "r") as f:
@@ -16,6 +17,7 @@ with open("./link.json", "r") as f:
     allLinks = file["data"]
 
 PATH = r"C:\Program Files (x86)\chromedriver.exe"
+
 
 # try:
 #     proxy = FreeProxy().get()
@@ -26,20 +28,28 @@ print(proxy)
 
 # ----------------------------------------------------------------------------------------------
 
+# database connection----------------------------------------------------------------------------
+
+CONNECTION_STRING = "mongodb://localhost:27017"
+client = MongoClient(CONNECTION_STRING)
+db = client["amazon-product-scrapper"]
+collection = db["products"]
+
+
+# ----------------------------------------------------------------------------------------------
+
 
 p = Path("./data")
 p.mkdir(exist_ok=True)
 
 
-def threadFunc(links, proxy, index):
-    print(links)
+def threadFunc(links, proxy):
     options = webdriver.ChromeOptions()
-    # options.headless = True
+    options.headless = True
     if proxy:
         options.add_argument(f"--proxy-server={proxy}")
     driver = webdriver.Chrome(PATH, options=options)
 
-    productList = []
     with FillingCirclesBar("Processing", max=len(links)) as bar:
         for link in links:
             time.sleep(2)
@@ -80,17 +90,9 @@ def threadFunc(links, proxy, index):
                 product["info"] = proInfo
             else:
                 product["info"] = []
-
-            productList.append(product)
+            product["link"] = link
+            collection.insert_one(product)
             bar.next()
-
-    pprint(productList)
-    fileData = {}
-    fileData["data"] = productList
-    jsonStr = json.dumps(fileData)
-
-    with open(f"./data/data-{index}.json", "w+") as f:
-        f.write(jsonStr)
 
 
 # ----------------------------------------------------------------------------------------------
@@ -99,12 +101,11 @@ def threadFunc(links, proxy, index):
 num = int(len(allLinks))
 grupedLinks = []
 
-nGroups = 26
+nGroups = 10
 o = range(0, num, nGroups)
 for i in o:
     grupedLinks.append(allLinks[i : i + nGroups])
 
-i = 1
 threads = []
 for links in grupedLinks:
     x = threading.Thread(
@@ -112,12 +113,10 @@ for links in grupedLinks:
         args=(
             links,
             proxy,
-            i,
         ),
     )
     threads.append(x)
     x.start()
-    i = i + 1
 
 for thread in threads:
     thread.join()
